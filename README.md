@@ -1,323 +1,240 @@
-# Retina AI: Predict Student Dropout Risk with Machine Learning
+# Retina AI: Multimodal Student Dropout Risk Prediction
 
-A comprehensive machine learning solution developed for the Kaggle competition **"Retina AI: Predict Student Dropout Risk with Deep Learning"**.
+Predicting student dropout risk using academic trajectories, attendance behavior, and counsellor interventions through a multimodal machine learning framework.
 
-**Competition Link:**
+## Competition
+
+**Retina AI: Predict Student Dropout Risk with Deep Learning**
+
+Competition Link:
 https://www.kaggle.com/competitions/retina-ai-predict-student-dropout-risk-with-deep-learning
 
-**Competition Write-up:**
+Technical Writeup:
 https://www.kaggle.com/competitions/retina-ai-predict-student-dropout-risk-with-deep-learning/writeups/retina-ai-kkw
 
 ---
 
-## Abstract
+# Results
 
-Student attrition remains a significant challenge for educational institutions. Identifying students at risk of dropping out enables timely interventions, improved academic support, and better retention outcomes.
+| Metric              | Score      |
+| ------------------- | ---------- |
+| OOF Macro-F1        | **0.7227** |
+| Evaluation Macro-F1 | **0.7098** |
+| Accuracy            | **75.70%** |
 
-This project presents a feature-engineering-driven machine learning pipeline designed to predict student dropout risk using academic records, attendance histories, demographic information, and counsellor observations.
+### Key Achievement
 
-Rather than relying solely on deep learning, the solution focuses on extracting predictive signals from multiple data sources and combining several gradient boosting and tree-based models through cross-validated ensembling.
+**Zero High-Risk students were misclassified as Low-Risk.**
 
-The final system integrates:
-
-* Longitudinal attendance analysis
-* Counsellor note intelligence
-* Target encoding with leakage prevention
-* Academic performance trend modelling
-* Class imbalance handling
-* Multi-model ensemble learning
+In a real educational setting, this is the most critical prediction error because it prevents timely intervention. Eliminating this failure mode was a primary objective of the final solution.
 
 ---
 
 # Problem Statement
 
-Given historical student information, predict the dropout risk category for each student.
+Student dropout is rarely caused by a single event.
 
-The challenge provides information from multiple sources:
+Warning signs typically appear weeks or months before a student leaves:
 
-* Student demographic attributes
-* Academic performance records
-* Semester-wise backlog information
-* Attendance time series
-* Counsellor intervention notes
+* Declining attendance
+* Falling academic performance
+* Growing backlogs
+* Financial stress
+* Counsellor observations indicating disengagement
 
-The objective is to learn patterns that distinguish between students with varying levels of dropout risk.
+The challenge is that these signals exist across different systems and are rarely analyzed together.
+
+The goal of this project was to combine these heterogeneous signals into a unified prediction framework capable of identifying vulnerable students early enough for meaningful intervention.
 
 ---
 
-# Solution Overview
+# My Approach
 
-The solution follows a feature-centric machine learning workflow.
+Rather than treating dropout prediction as a conventional tabular classification problem, I focused on modelling **student trajectory**.
+
+The central hypothesis was:
+
+> Direction of change is more informative than current state.
+
+Examples:
+
+* A CGPA of 6.5 can indicate improvement for one student and decline for another.
+* Attendance of 70% may indicate recovery or disengagement depending on previous weeks.
+* A counsellor note becomes significantly more valuable when viewed alongside attendance and academic trends.
+
+To capture this behavior, the solution combines:
+
+* Academic trend modelling
+* Attendance sequence modelling
+* Counsellor note intelligence
+* Target encoding
+* Ensemble learning
+* Multimodal fusion
+
+---
+
+# Solution Architecture
+
+The final solution consists of two independent prediction streams combined through probability-level fusion.
 
 ```mermaid
-flowchart TD
+flowchart LR
 
-A[Raw Student Data]
---> B[Data Cleaning]
+A[Student Records]
 
-B --> C[Attendance Feature Engineering]
+A --> B[Academic Features]
+A --> C[Attendance Sequences]
+A --> D[Counsellor Notes]
 
-B --> D[Counsellor Note Processing]
+B --> E[GBM Ensemble]
 
-B --> E[Academic Performance Features]
+E --> E1[LightGBM]
+E --> E2[XGBoost]
+E --> E3[CatBoost]
+E --> E4[ExtraTrees]
 
-C --> F[Feature Store]
-D --> F
-E --> F
+B --> F[Tabular MLP]
+C --> G[Attendance BiLSTM]
+D --> H[Notes BiLSTM]
 
-F --> G[Categorical Encoding]
+F --> I[Neural Fusion Layer]
+G --> I
+H --> I
 
-G --> H[Multiclass Target Encoding]
+E --> J[Probability Fusion]
+I --> J
 
-H --> I[Feature Matrix]
-
-I --> J[5 Fold Stratified Cross Validation]
-
-J --> K[LightGBM]
-J --> L[XGBoost]
-J --> M[CatBoost]
-J --> N[Extra Trees]
-
-K --> O[Out of Fold Predictions]
-L --> O
-M --> O
-N --> O
-
-O --> P[Model Averaging Ensemble]
-
-P --> Q[Final Predictions]
+J --> K[Final Risk Prediction]
 ```
 
 ---
 
 # Dataset Components
 
-The competition dataset consists of four primary sources:
+The competition data combines multiple educational modalities.
 
-| Dataset           | Description                        |
-| ----------------- | ---------------------------------- |
-| Train             | Labeled student records            |
-| Test              | Unlabeled student records          |
-| Attendance Series | Weekly attendance across semesters |
-| Counsellor Notes  | Text-based intervention records    |
+| Component          | Description                          |
+| ------------------ | ------------------------------------ |
+| Student Records    | Demographic and academic information |
+| Attendance Logs    | Weekly attendance history            |
+| Counsellor Notes   | Student intervention records         |
+| Competition Labels | Dropout risk category                |
 
-Each source contains information that contributes differently to dropout risk prediction.
+Target Classes:
+
+* Low Risk (0)
+* Medium Risk (1)
+* High Risk (2)
 
 ---
 
 # Feature Engineering
 
-Feature engineering forms the core of the solution.
+Feature engineering contributed more to performance than model complexity.
 
-## 1. Academic Performance Features
+## Academic Features
 
-Semester-wise CGPA values were transformed into trend-based indicators.
-
-Generated features include:
-
-* Mean CGPA
-* CGPA standard deviation
-* Minimum CGPA
-* CGPA growth trend
-* Semester-to-semester CGPA change
-
-Examples:
+Generated features included:
 
 ```text
 cgpa_mean
-cgpa_std
-cgpa_trend
+cgpa_slope
+cgpa_drop_max
 cgpa_d21
 cgpa_d32
 cgpa_d43
 ```
 
-These features capture both academic strength and progression over time.
+These capture both academic performance and direction of change.
 
 ---
 
-## 2. Backlog Features
-
-Backlog accumulation is a strong indicator of academic risk.
-
-Created features include:
+## Backlog Features
 
 ```text
-total_backlogs
+backlog_total
 backlog_trend
-bl_d21
-bl_d32
 ```
 
-These variables model both backlog volume and growth patterns.
+Backlog accumulation emerged as one of the strongest indicators of dropout risk.
 
 ---
 
-## 3. Attendance Intelligence
+## Attendance Intelligence
 
-Attendance data was transformed from weekly records into student-level behavioral indicators.
+Attendance data was transformed into two separate representations.
 
-### Aggregate Statistics
-
-For each student:
-
-* Mean attendance
-* Attendance variance
-* Minimum attendance
-* Maximum attendance
-
-### Semester-Level Behaviour
-
-Semester-wise attendance averages were generated through pivoting.
-
-Examples:
+### Aggregate Features
 
 ```text
-att_sem1_mean
-att_sem2_mean
-att_sem3_mean
+attendance_mean
+attendance_std
+attendance_min
+attendance_max
+att_slope_sem3
 ```
 
-### Subject-Level Attendance
+### Sequence Representation
 
-Attendance was aggregated separately for each subject.
-
-This allows the model to identify subject-specific engagement patterns.
-
-### Attendance Trend Modelling
-
-A global time index was created across all semesters.
-
-Ordinary Least Squares regression was then used to estimate attendance trajectories.
+Attendance histories were reshaped into temporal sequences for BiLSTM processing.
 
 ```text
-att_slope
+Shape: (24, 3)
 ```
 
-Interpretation:
+This allowed the model to learn behavioral patterns rather than relying solely on summary statistics.
 
-* Positive slope → improving engagement
-* Negative slope → declining engagement
+---
 
-### Attendance Risk Signals
+## Financial Risk Features
 
-Additional features:
+Composite indicators were created from:
+
+* Family income
+* Scholarship status
+* Employment information
+
+Example:
 
 ```text
-att_low_weeks
-att_recent_vs_early
-att_sem3_2_diff
+financial_stress_index
 ```
-
-These features capture persistent absenteeism and late-stage disengagement.
 
 ---
 
 # Counsellor Note Intelligence
 
-Counsellor observations contain valuable qualitative information that is often unavailable in structured datasets.
+The counsellor notes contained valuable contextual information often unavailable in structured datasets.
 
-Instead of applying large language models, domain-specific signals were extracted directly.
+Instead of relying entirely on automated NLP pipelines, domain knowledge was incorporated directly.
 
----
+## Note Severity Score
 
-## Note Encoding
+A manually engineered severity scale was created:
 
-Each unique note was label encoded.
+| Severity | Example                    |
+| -------- | -------------------------- |
+| 0        | Performing well            |
+| 1        | Minor attendance concerns  |
+| 2        | Academic difficulties      |
+| 3        | Multiple backlogs          |
+| 4        | Financial dropout concerns |
 
-```text
-note_id
-```
-
----
-
-## Situation Extraction
-
-The first sentence of each counsellor note was extracted as the primary situation descriptor.
+Generated feature:
 
 ```text
-situation_id
+note_severity_score
 ```
 
-This helps isolate the root issue being discussed.
-
----
-
-## Risk Keyword Detection
-
-Rule-based keyword extraction was used to identify risk categories.
-
-### High-Risk Indicators
-
-Examples:
-
-* Financial difficulties
-* Severe personal issues
-* Health emergencies
-* Multiple backlogs
-
-### Medium-Risk Indicators
-
-Examples:
-
-* Stress
-* Attendance concerns
-* Academic struggles
-
-### Positive Indicators
-
-Examples:
-
-* No major issues
-* Active participation
-* Good progress
-
-Generated features:
-
-```text
-note_high_risk_kw
-note_med_risk_kw
-note_low_risk_kw
-```
+This became one of the strongest predictive signals.
 
 ---
 
 # Target Encoding
 
-A major performance improvement came from multiclass target encoding.
+Several high-cardinality variables were encoded using Out-of-Fold multiclass target encoding.
 
-Two high-cardinality variables were encoded:
-
-* note_id
-* situation_id
-
-The implementation used:
-
-* Stratified K-Fold
-* Out-of-Fold generation
-* Bayesian smoothing
-* Leakage prevention
-
----
-
-## Encoding Workflow
-
-```mermaid
-flowchart LR
-
-A[Training Fold]
---> B[Category Statistics]
-
-B --> C[Bayesian Smoothing]
-
-C --> D[Target Probabilities]
-
-D --> E[Validation Fold]
-
-E --> F[Out Of Fold Features]
-```
-
-Generated features:
+Features included:
 
 ```text
 note_te_p0
@@ -329,231 +246,184 @@ sit_te_p1
 sit_te_p2
 ```
 
-A derived risk-spread feature was also created:
-
-```text
-note_risk_spread
-```
-
----
-
-# Cross-Feature Interactions
-
-Several interaction terms were introduced to model relationships between academic performance and engagement.
-
-Examples:
-
-```text
-cgpa_div_backlog
-cgpa_x_backlog
-
-att_d21
-att_d32
-```
-
-These interactions often provide stronger signals than individual variables.
+All encodings were generated inside cross-validation folds to eliminate leakage.
 
 ---
 
 # Modeling Strategy
 
-A single model was not sufficient to capture all patterns within the dataset.
+## Stream 1: GBM Ensemble
 
-The final solution combines four complementary algorithms.
+The first prediction stream consists of:
 
----
+* LightGBM
+* XGBoost
+* CatBoost
+* ExtraTrees
 
-## LightGBM
-
-Used for:
-
-* Fast training
-* Strong handling of tabular data
-* Effective feature interactions
-
----
-
-## XGBoost
-
-Used for:
-
-* Robust generalization
-* Strong nonlinear learning capability
-
----
-
-## CatBoost
-
-Used for:
-
-* Superior categorical feature handling
-* Reduced preprocessing requirements
-
----
-
-## Extra Trees Classifier
-
-Used for:
-
-* High variance reduction
-* Improved ensemble diversity
-
----
-
-# Validation Strategy
-
-The entire pipeline was evaluated using:
+Class probabilities are averaged to produce:
 
 ```text
-5-Fold Stratified Cross Validation
+P_gbm
 ```
 
-This ensures:
+---
 
-* Stable performance estimation
-* Balanced class representation
-* Reduced overfitting
+## Stream 2: Multimodal Neural Network
+
+The neural architecture contains three parallel branches.
+
+### Tabular Branch
+
+```text
+Input
+→ Dense(128)
+→ Dense(64)
+```
+
+### Attendance Branch
+
+```text
+BiLSTM
+Input Shape: (24, 3)
+```
+
+### Notes Branch
+
+```text
+Embedding
+→ BiLSTM
+```
+
+All branches are fused through a shared classification head.
+
+Output:
+
+```text
+P_nn
+```
 
 ---
+
+## Final Fusion
+
+Final predictions are generated through probability blending.
+
+```text
+P_final = 0.6 × P_gbm + 0.4 × P_nn
+```
+
+A class-weighted inference strategy is then applied to improve Macro-F1.
+
+---
+
+# Handling Class Imbalance
+
+Three separate interventions were used:
+
+1. Class-weighted neural network loss
+2. Balanced tree-based learners
+3. Class-weighted inference optimization
+
+This significantly improved Medium-Risk and High-Risk class performance.
+
+---
+
+# Experiment Progression
+
+Every component was introduced only after demonstrating measurable improvement.
+
+| Stage                      | OOF Macro-F1 |
+| -------------------------- | ------------ |
+| LightGBM Baseline          | 0.6741       |
+| GBM Ensemble               | 0.6989       |
+| + Neural Network Blend     | 0.7151       |
+| + Class-Weighted Inference | 0.7227       |
+
+---
+
 # Model Performance
-
-The final ensemble model was evaluated using a held-out validation set.
-
-## Evaluation Metrics
-
-| Metric | Score |
-|----------|---------|
-| Accuracy | 75.70% |
-| Macro F1 Score | 0.7098 |
 
 ## Confusion Matrix
 
-The confusion matrix below illustrates class-wise prediction performance across the three dropout risk categories.
-
-- Low-risk students were identified with high reliability (83.1% recall).
-- High-risk students achieved strong detection performance (79.8% recall).
-- Most classification errors occurred between the Medium and neighboring risk categories, reflecting the inherent overlap between student risk profiles.
-- Very few Low-risk students were incorrectly classified as High-risk, indicating strong class separation.
-
 <p align="center">
-  <img src="\assets\Results.png" alt="Confusion Matrix" width="800">
+  <img src="assets/Results.png" width="850">
 </p>
 
-### Class-wise Analysis
+## Class-wise Recall
 
-| True Class | Correct Predictions | Recall |
-|------------|--------------------|---------|
-| Low | 1496 / 1800 | 83.1% |
-| Medium | 416 / 750 | 55.5% |
-| High | 359 / 450 | 79.8% |
+| Class       | Recall |
+| ----------- | ------ |
+| Low Risk    | 83.1%  |
+| Medium Risk | 55.5%  |
+| High Risk   | 79.8%  |
 
-The model demonstrates strong performance in identifying both Low-risk and High-risk students while maintaining reasonable discrimination of Medium-risk cases. This behavior is expected because Medium-risk students often share characteristics with both neighboring classes, making them inherently more challenging to classify.
+### Operational Perspective
 
-## Training Architecture
+The most costly mistake in a student intervention system is classifying a High-Risk student as Low-Risk.
 
-```mermaid
-flowchart TD
-
-A[Feature Matrix]
-
-A --> B[Fold 1]
-A --> C[Fold 2]
-A --> D[Fold 3]
-A --> E[Fold 4]
-A --> F[Fold 5]
-
-B --> G[LightGBM]
-B --> H[XGBoost]
-B --> I[CatBoost]
-B --> J[Extra Trees]
-
-C --> G
-C --> H
-C --> I
-C --> J
-
-D --> G
-D --> H
-D --> I
-D --> J
-
-E --> G
-E --> H
-E --> I
-E --> J
-
-F --> G
-F --> H
-F --> I
-F --> J
-
-G --> K[OOF Predictions]
-H --> K
-I --> K
-J --> K
-
-K --> L[Ensemble]
-L --> M[Final Submission]
-```
-
----
-
-# Ensemble Method
-
-The final predictions are generated through probability averaging across all four models.
+The final model achieved:
 
 ```text
-Final Prediction
-
-=
-(LightGBM
- + XGBoost
- + CatBoost
- + ExtraTrees) / 4
+High Risk → Low Risk = 0
 ```
 
-This approach improves stability and reduces model-specific bias.
+ensuring vulnerable students are not overlooked by downstream intervention processes.
 
 ---
 
-# Key Insights
+# Feature Importance
 
-Several observations emerged during experimentation:
+SHAP analysis identified the most influential features:
 
-1. Feature engineering contributed more than model complexity.
-2. Attendance trajectories were highly predictive.
-3. Counsellor notes contained strong latent risk indicators.
-4. Target encoding substantially improved performance.
-5. Ensemble learning consistently outperformed individual models.
+1. cgpa_slope
+2. backlog_total
+3. att_slope_sem3
+4. note_severity_score
+
+Interestingly, these align closely with the signals experienced counsellors already consider important when evaluating student risk.
 
 ---
 
-# Reproducibility
+# Key Learnings
 
-Clone the repository:
+## Trajectory Beats Snapshot
 
-```bash
-git clone <repository-url>
-cd retina-ai-dropout-prediction
-```
+Students are better described by how they are changing than by where they currently stand.
 
-Install dependencies:
+Trend-based features consistently outperformed static indicators.
 
-```bash
-pip install -r requirements.txt
-```
+---
 
-Run training:
+## Attendance Sequences Matter
 
-```bash
-python train.py
-```
+The Attendance BiLSTM learned patterns that aggregate attendance statistics could not capture.
 
-Generate predictions:
+The shape of the attendance curve carried meaningful predictive information.
 
-```bash
-python inference.py
-```
+---
+
+## Domain Knowledge Matters
+
+The manually engineered note severity score ranked among the strongest features in the final system.
+
+Simple domain expertise often outperformed more complex NLP approaches.
+
+---
+
+## OOF Discipline Is Critical
+
+All target encodings and model evaluations were generated using strict Out-of-Fold procedures.
+
+This kept the gap between OOF and evaluation performance small and improved generalization.
+
+---
+
+## Fusion Strategy Matters
+
+Simply combining modalities does not guarantee better performance.
+
+Late fusion consistently outperformed end-to-end joint optimization during experimentation.
 
 ---
 
@@ -567,26 +437,67 @@ python inference.py
 * XGBoost
 * CatBoost
 * PyTorch
+* NLTK
 * Matplotlib
 * Seaborn
 
 ---
 
+# Installation
+
+```bash
+git clone <repository-url>
+
+cd retina-ai-student-dropout-prediction
+
+pip install -r requirements.txt
+```
+
+---
+
+# Running the Project
+
+Open and execute:
+
+```text
+RetinaAiCode.ipynb
+```
+
+or
+
+```bash
+jupyter notebook RetinaAiCode.ipynb
+```
+
+---
+
+# Repository Structure
+
+```text
+.
+├── assets/
+│   └── Results.png
+│
+├── RetinaAiCode.ipynb
+├── requirements.txt
+└── README.md
+```
+
+---
+
 # References
 
-Competition:
+Competition
+
 https://www.kaggle.com/competitions/retina-ai-predict-student-dropout-risk-with-deep-learning
 
-Official Write-up:
+Technical Writeup
+
 https://www.kaggle.com/competitions/retina-ai-predict-student-dropout-risk-with-deep-learning/writeups/retina-ai-kkw
 
 ---
 
-## Author
+# Author
 
-Anup Patil
-
-B.Tech Computer Engineering
-KK Wagh Institute of Engineering Education & Research
-
-Nashik, India
+**Anup Patil**
+Nashik, Maharashtra, India
