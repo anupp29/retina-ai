@@ -415,6 +415,39 @@ This ensures:
 * Reduced overfitting
 
 ---
+# Model Performance
+
+The final ensemble model was evaluated using a held-out validation set.
+
+## Evaluation Metrics
+
+| Metric | Score |
+|----------|---------|
+| Accuracy | 75.70% |
+| Macro F1 Score | 0.7098 |
+
+## Confusion Matrix
+
+The confusion matrix below illustrates class-wise prediction performance across the three dropout risk categories.
+
+- Low-risk students were identified with high reliability (83.1% recall).
+- High-risk students achieved strong detection performance (79.8% recall).
+- Most classification errors occurred between the Medium and neighboring risk categories, reflecting the inherent overlap between student risk profiles.
+- Very few Low-risk students were incorrectly classified as High-risk, indicating strong class separation.
+
+<p align="center">
+  <img src="\assets\Results.png" alt="Confusion Matrix" width="800">
+</p>
+
+### Class-wise Analysis
+
+| True Class | Correct Predictions | Recall |
+|------------|--------------------|---------|
+| Low | 1496 / 1800 | 83.1% |
+| Medium | 416 / 750 | 55.5% |
+| High | 359 / 450 | 79.8% |
+
+The model demonstrates strong performance in identifying both Low-risk and High-risk students while maintaining reasonable discrimination of Medium-risk cases. This behavior is expected because Medium-risk students often share characteristics with both neighboring classes, making them inherently more challenging to classify.
 
 ## Training Architecture
 
